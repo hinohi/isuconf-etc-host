@@ -32,7 +32,7 @@ impl EtcHosts {
         for (i, line) in self.lines.iter().enumerate() {
             if let Some(comment) = &line.comment {
                 if comment == "ISUCON Servers" {
-                    return i;
+                    return i + 1;
                 }
             }
         }
@@ -51,7 +51,7 @@ impl EtcHosts {
             data: None,
             comment: Some("ISUCON Servers".to_owned()),
         });
-        self.lines.len() - 1
+        self.lines.len()
     }
 
     pub fn add_data(&mut self, ip: IpAddr, host: &str) {
@@ -67,7 +67,7 @@ impl EtcHosts {
         });
         let mut i = self.add_my_region();
         while let Some(line) = self.lines.get(i) {
-            if line.is_empty() {
+            if line.data.is_none() {
                 break;
             }
             i += 1;
@@ -222,14 +222,76 @@ mod tests {
         assert_eq!(line.comment, Some("isucon1  ".to_owned()));
     }
 
-    fn etc_hosts() {
+    #[test]
+    fn etc_hosts_new() {
         let s = "127.0.0.1 localhost
 
 # The following lines are desirable for IPv6 capable hosts
 ::1 ip6-localhost ip6-loopback
-fe00::0 ip6-localnet
+fe00::0 ip6-localnet";
+        let mut eh = EtcHosts::from_str(s).unwrap();
+        eh.add_data("127.0.0.1".parse().unwrap(), "is1");
+        let expect = "127.0.0.1 localhost
 
+# The following lines are desirable for IPv6 capable hosts
+::1 ip6-localhost ip6-loopback
+fe00:: ip6-localnet
+
+# ISUCON Servers
 127.0.0.1 is1
-10.0.0.2 is2";
+";
+        assert_eq!(eh.to_string().as_str(), expect);
+    }
+
+    #[test]
+    fn etc_hosts_empty() {
+        let mut eh = EtcHosts::from_str("").unwrap();
+        eh.add_data("127.0.0.1".parse().unwrap(), "is1");
+        let expect = "# ISUCON Servers
+127.0.0.1 is1
+";
+        assert_eq!(eh.to_string().as_str(), expect);
+    }
+
+    #[test]
+    fn etc_hosts_rewrite() {
+        let s = "127.0.0.1 localhost
+
+# ISUCON Servers
+127.0.0.1 is1
+10.0.0.3 is2
+10.0.0.10 is3
+# The following lines are desirable for IPv6 capable hosts
+::1 ip6-localhost ip6-loopback
+fe00:: ip6-localnet
+
+";
+        let mut eh = EtcHosts::from_str(s).unwrap();
+        eh.add_data("10.0.0.2".parse().unwrap(), "is2");
+        let expect = "127.0.0.1 localhost
+
+# ISUCON Servers
+127.0.0.1 is1
+10.0.0.10 is3
+10.0.0.2 is2
+# The following lines are desirable for IPv6 capable hosts
+::1 ip6-localhost ip6-loopback
+fe00:: ip6-localnet
+";
+        assert_eq!(eh.to_string().as_str(), expect);
+    }
+
+    #[test]
+    fn etc_hosts_not_remove_line() {
+        let s = "# ISUCON Servers
+127.0.0.1 is1 is2
+";
+        let mut eh = EtcHosts::from_str(s).unwrap();
+        eh.add_data("10.0.0.2".parse().unwrap(), "is2");
+        let expect = "# ISUCON Servers
+127.0.0.1 is1
+10.0.0.2 is2
+";
+        assert_eq!(eh.to_string().as_str(), expect);
     }
 }

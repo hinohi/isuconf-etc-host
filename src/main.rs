@@ -1,6 +1,8 @@
 use clap::Parser;
-use std::net::IpAddr;
-use std::path::PathBuf;
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    path::PathBuf,
+};
 
 mod hosts;
 
@@ -17,16 +19,22 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    for i in 1..=args.ips.len() {
+    for i in 0..args.ips.len() {
         let mut path = args.config_base_path.clone();
         path.push(format!("{}{}", args.hostname_prefix, i + 1));
         path.push("etc/hosts");
 
-        let mut hosts = EtcHosts::from_str(&std::fs::read_to_string(path)?)?;
+        let mut hosts = EtcHosts::from_str(&std::fs::read_to_string(&path)?)?;
         for (j, &ip) in args.ips.iter().enumerate() {
+            // loopback addr
+            let ip = if i == j {
+                IpAddr::from(Ipv4Addr::new(127, 0, 0, 1))
+            } else {
+                ip
+            };
             hosts.add_data(ip, &format!("{}{}", args.hostname_prefix, j + 1));
         }
-        print!("{}", hosts.to_string());
+        std::fs::write(&path, hosts.to_string())?;
     }
     Ok(())
 }
